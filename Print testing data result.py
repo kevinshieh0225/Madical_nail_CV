@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import gc
 
+#import h5py
+
 import PIL
 import torch
 import torchvision
@@ -18,7 +20,7 @@ import torchvision.models as models
 import torch.nn as nn
 from torch.nn import Linear, ReLU, CrossEntropyLoss, Conv2d, MaxPool2d, Module
 from torch.optim import Adam
-from tqdm import tqdm_notebook as tqdm
+from tqdm.notebook import tqdm as tqdm
 from ipywidgets import IntProgress
 
 import json
@@ -50,24 +52,26 @@ def load_nail_csv(folder='./ML_hw2/學生的training_data/'):
     # label: 標籤  : [1,0,0]
     slice_csv = re.sub('學生的', "" ,folder.split('/')[-2] ) #提取training_data或test_data
     csv_path = f'{folder}{slice_csv}.csv'
+    resize_folder = f'{folder}resize/'
+    if not os.path.isdir(resize_folder):
+        os.makedirs(resize_folder)
     with open(csv_path, 'r', encoding='utf8') as f:        
         f.readline()
-        for line in f:
+        for line in tqdm(f):
             clean_line = line.replace('\n', '').replace('\ufeff', '').split(',')
             # [id, light, ground_truth, grade]
             curr_img_path = f'{folder}{clean_line[1]}/{clean_line[0]}'
+            new_img_path = f'{resize_folder}{clean_line[0]}'
             if not os.path.isfile(curr_img_path):
                 print('catch')
                 continue
-            """
-            img = cv2.imread(curr_img_path, cv2.IMREAD_COLOR)
-            if img is None:
-                print(curr_img_path)
-                continue
-            """
-            
-            path.append(curr_img_path)
+            if not os.path.isfile(new_img_path):
+                img = cv2.imread(curr_img_path, cv2.IMREAD_COLOR)
+                img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_AREA)
+                cv2.imwrite(new_img_path, img)
+            path.append(new_img_path)
             label.append(int(clean_line[3])-1)
+
     print('data size: ')
     print(len(path), len(label))
     print(path[:10])
@@ -88,7 +92,7 @@ def dataloader_prepare(folder='./ML_hw2/學生的training_data/', batch_size=8):
         folder:讀入資料之位置
     """
     transform_flip = torchvision.transforms.Compose([
-        torchvision.transforms.Resize((224,224)),
+        #torchvision.transforms.Resize((224,224)),
         torchvision.transforms.RandomHorizontalFlip(p = 1),
         torchvision.transforms.RandomRotation(15, resample=PIL.Image.BILINEAR),
         torchvision.transforms.ToTensor(),
@@ -96,26 +100,28 @@ def dataloader_prepare(folder='./ML_hw2/學生的training_data/', batch_size=8):
         ])
 
     transform = torchvision.transforms.Compose([
-        torchvision.transforms.Resize((224,224)),
+        #torchvision.transforms.Resize((224,224)),
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
 
     transform_rotation = torchvision.transforms.Compose([
-        torchvision.transforms.Resize((224,224)),
+        #torchvision.transforms.Resize((224,224)),
         torchvision.transforms.RandomRotation((10,15), resample=PIL.Image.BILINEAR),
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
 
     path, label = load_nail_csv(folder)
-    
+    """
     l = []
     l.append(Dataset(path, label, transform_flip))
     l.append(Dataset(path, label, transform))
     l.append(Dataset(path, label, transform_rotation))
     augment_dataset = torch.utils.data.ConcatDataset(l)
-    #augment_dataset = Dataset(path, label, transform_flip) + Dataset(path, label, transform) + Dataset(path, label, transform_rotation)
+    """
+    augment_dataset = Dataset(path, label, transform)
+    
     print(f'augment data len : {len(augment_dataset)}')
     print(f'augment data type : {augment_dataset}')
     #切分70%當作訓練集、30%當作驗證集
@@ -144,38 +150,13 @@ def dataloader_prepare(folder='./ML_hw2/學生的training_data/', batch_size=8):
     
     return train_dataloader, valid_dataloader
 
-class CNN_Model(nn.Module):
-    #列出需要哪些層
-    def __init__(self):
-        super(CNN_Model, self).__init__()
-        self.CNN = nn.Sequential(                       #(3,224,224)
-            nn.Conv2d(3, 16, kernel_size=5, stride=1),  #(16,220,220)
-            nn.ReLU(inplace=True),
-            # Max pool 1
-            nn.MaxPool2d(kernel_size=2),                #(16,110,110)
-            # Convolution 2
-            nn.Conv2d(16,8, kernel_size=5, stride=1),  #(8,106,106)
-            nn.ReLU(inplace=True),
-            # Max pool 2
-            nn.MaxPool2d(kernel_size=2)                 #(8,53,53)
-            # Fully connected 1 ,#input_shape=(8*53*53)
-        )
-        
-        self.main = nn.Sequential(
-            nn.Linear(in_features=8*53*53, out_features=256),
-            nn.ReLU(),
-            nn.Linear(in_features=256, out_features=3),
-            nn.LogSoftmax(dim=1)
-        )
-    def forward(self, input):
-        out = self.CNN(input)
-        out = out.view(out.size(0), -1) 
-        return self.main(out)
-
 def train(model,n_epochs,train_loader,valid_loader,optimizer,criterion,batch_size):
-    train_acc_his,valid_acc_his=[],[]
-    train_losses_his,valid_losses_his=[],[]
-    model.cuda()
+    #train_acc_his,valid_acc_his=[],[]
+    #train_losses_his,valid_losses_his=[],[]
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        print('1')
     for epoch in range(1, n_epochs+1):
         # keep track of training and validation loss
         train_loss,valid_loss = 0.0,0.0
@@ -192,16 +173,20 @@ def train(model,n_epochs,train_loader,valid_loader,optimizer,criterion,batch_siz
         model.train()
         for data, target in tqdm(train_loader):
             # move tensors to GPU if CUDA is available
-            if True:#train_on_gpu
+            if torch.cuda.is_available():#train_on_gpu
                 data, target = data.cuda(), target.cuda()
+            else:
+                print('1')
             # forward pass: compute predicted outputs by passing inputs to the model
             output = model(data)
             # calculate the batch loss
             loss = criterion(output, target)
             #calculate accuracy
             pred = output.data.max(dim = 1, keepdim = True)[1]
+            
             train_correct += np.sum(np.squeeze(pred.eq(target.data.view_as(pred))).cpu().numpy())
             train_total += data.size(0)
+            
             # backward pass: compute gradient of the loss with respect to model parameters
             loss.backward()
             # perform a single optimization step (parameter update)
@@ -219,14 +204,16 @@ def train(model,n_epochs,train_loader,valid_loader,optimizer,criterion,batch_siz
                 train_target=torch.cat((train_target,target.data.view_as(pred)), 0)
         train_pred=train_pred.cpu().view(-1).numpy().tolist()
         train_target=train_target.cpu().view(-1).numpy().tolist()
-######################    
+        ######################
         # validate the model #
         ######################
         model.eval()
         for data, target in tqdm(valid_loader):
             # move tensors to GPU if CUDA is available
-            if True:#train_on_gpu
+            if torch.cuda.is_available():#train_on_gpu
                 data, target = data.cuda(), target.cuda()
+            else:
+                print('1')
             # forward pass: compute predicted outputs by passing inputs to the model
             output = model(data)
             # calculate the batch loss
@@ -253,26 +240,83 @@ def train(model,n_epochs,train_loader,valid_loader,optimizer,criterion,batch_siz
         # calculate average accuracy
         train_acc=train_correct/train_total
         valid_acc=val_correct/val_total
-        train_acc_his.append(train_acc)
-        valid_acc_his.append(valid_acc)
-        train_losses_his.append(train_loss)
-        valid_losses_his.append(valid_loss)
-# print training/validation statistics 
+        #train_acc_his.append(train_acc)
+        #valid_acc_his.append(valid_acc)
+        #train_losses_his.append(train_loss)
+        #valid_losses_his.append(valid_loss)
+    # print training/validation statistics
         print(f'\tTraining Loss: {train_loss:.6f} \tValidation Loss: {valid_loss:.6f}')
         print(f'\tTraining Accuracy: {train_acc:.6f} \tValidation Accuracy: {valid_acc:.6f}')
-    return train_acc_his,valid_acc_his,train_losses_his,valid_losses_his,model
+    return model
 
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
 print('GPU State:', device)
-model1=CNN_Model()
-print(model1)
 
-n_epochs = 10
-LR = 0.0001
-batch_size = 32
-optimizer1 = torch.optim.Adam(model1.parameters(), lr=LR)
-criterion = CrossEntropyLoss()
+# Try Resnet finetune
 
+model_ft = models.alexnet(pretrained=True)
+
+for param in model_ft.parameters():
+    param.requires_grad = False
+
+num_ftrs = model_ft.classifier[6].in_features
+model_ft.classifier[6] = nn.Linear(num_ftrs,3)
+
+model_ft=model_ft.to(device)# 放入裝置
+print(model_ft) # 列印新模型
+
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam([
+    {'params':model_ft.classifier.parameters()}
+], lr=0.00001)#指定 新加的fc层的学习率
+n_epochs = 50
+
+batch_size = 8
 train_dataloader, valid_dataloader = dataloader_prepare(folder='./ML_hw2/學生的training_data/',batch_size = batch_size)
+model_ft=train(model_ft,n_epochs,train_dataloader,valid_dataloader,optimizer,criterion, batch_size)
 
-train_acc_his,valid_acc_his,train_losses_his,valid_losses_his,model1=train(model1,n_epochs,train_dataloader,valid_dataloader,optimizer1,criterion, batch_size)
+torch.save(model_ft, "./hw2_classification")
+model_ft = torch.load('./hw2_classification')
+
+testing_path = []
+folder = './ML_hw2/學生的testing_data/'
+slice_csv = 'testing_data'#提取testing_data
+csv_path = f'{folder}{slice_csv}.csv'
+resize_folder = f'{folder}resize/'
+if not os.path.isdir(resize_folder):
+    os.makedirs(resize_folder)
+with open(csv_path, 'r', encoding='utf8') as f:        
+    f.readline()
+    for line in tqdm(f):
+        clean_line = line.replace('\n', '').replace('\ufeff', '').split(',')
+        # [id, light, ground_truth, grade]
+        curr_img_path = f'{folder}{slice_csv}/{clean_line[0]}'
+        new_img_path = f'{resize_folder}{clean_line[0]}'
+        if not os.path.isfile(curr_img_path):
+            print(curr_img_path)
+            print('catch')
+            continue
+        if not os.path.isfile(new_img_path):
+            img = cv2.imread(curr_img_path, cv2.IMREAD_COLOR)
+            img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(new_img_path, img)
+        testing_path.append(new_img_path)
+print('data size: ')
+print(f'testing數量：{len(testing_path)}')
+
+transform = torchvision.transforms.Compose([
+    #torchvision.transforms.Resize((224,224)),
+    torchvision.transforms.ToTensor(),
+    torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+
+model_ft.eval()
+pred_label=[]
+for path in tqdm(testing_path):
+    img = Image.open(path)
+    img = transform(img)
+    with torch.no_grad(): 
+        output=model_ft(img)
+    pred = output.data.max(dim = 1, keepdim = True)[1]
+    pred_label.append(int(pred))
+print(pred_label)
