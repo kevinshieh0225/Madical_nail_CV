@@ -266,7 +266,7 @@ def train(model,name,n_epochs,train_loader,valid_loader,optimizer,criterion_trai
     
     #save result
     plt.savefig(f'./result/{name}/plot.png')
-    torch.save(model, f'./result/{name}/model.pt')
+#     torch.save(model, f'./result/{name}/model.pt')
     return model
 
 def testing_result(model , folder = './ML_hw2/學生的testing_data/', csv_path = './HW2_E24056954.csv'): 
@@ -404,15 +404,15 @@ if __name__ == '__main__':
     
     # Try wide_resnet50_2 finetune
     for i in range(10):
-        name = f'HW3_model_ft_wide_resnet50_2_loss_SmoothL1Loss_{i}'
-        model_ft = models.wide_resnet50_2(pretrained=True)
-        num_ftrs = model_ft.fc.in_features
-        model_ft.fc = nn.Linear(num_ftrs,1)
+#         name = f'HW3_model_ft_wide_resnet50_2_trainloss_MSELoss_{i}'
+#         model_ft = models.wide_resnet50_2(pretrained=True)
+#         num_ftrs = model_ft.fc.in_features
+#         model_ft.fc = nn.Linear(num_ftrs,1)
     #     # Try vgg19 finetune
-    #     name = 'HW3_model_ft_vgg19'
-    #     model_ft = models.vgg19(pretrained=True)
-    #     num_ftrs = model_ft.classifier[6].in_features
-    #     model_ft.classifier[6] = nn.Linear(num_ftrs,1)
+        name = f'HW3_model_ft_vgg19_{i}'
+        model_ft = models.vgg19(pretrained=True)
+        num_ftrs = model_ft.classifier[6].in_features
+        model_ft.classifier[6] = nn.Linear(num_ftrs,1)
 
         if not os.path.isfile(f'./result/{name}/model.pt'):
             model_ft=model_ft.to(device)# 放入裝置
@@ -423,7 +423,7 @@ if __name__ == '__main__':
             optimizer = torch.optim.Adam([
                 {'params':model_ft.parameters()}
             ], lr=0.0001)
-            criterion_train = nn.SmoothL1Loss()
+            criterion_train = nn.MSELoss()
             criterion_test = nn.MSELoss()
             patience = 3
 
